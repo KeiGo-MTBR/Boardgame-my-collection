@@ -355,7 +355,7 @@
         <option value="2">2人</option>
         <option value="3">3人</option>
         <option value="4">4人</option>
-        <option value="5">5人以上</option>
+        <option value="5">�人以上</option>
       </select>
     </div>
     <div class="toolbar-group">
@@ -475,7 +475,7 @@
       <button class="btn-close-scan" onclick="closeScanModal()">×</button>
     </div>
     <div class="scan-tabs">
-      <button class="scan-tab active" id="tab-photo-btn" onclick="switchScanTab('photo')">📷 写真から読み取り</button>
+      <button class="scan-tab active" id="tab-photo-btn" onclick="switchScanTab('photo')">📷 写真かり読み取り</button>
       <button class="scan-tab" id="tab-search-btn" onclick="switchScanTab('search')">🔍 名前で検索</button>
     </div>
 
@@ -534,7 +534,7 @@ const firebaseConfig = {
   appId:             "1:1008443683437:web:6e571290f794dcd0ff8564"
 };
 
-// オーナーのGoogleアカウントメールアドレス㼈このアドレスはみ編集可能）
+// オーナーはGoogleアカウントメールアドレス
 const OWNER_EMAIL = 'mkeigo.0415@gmail.com';
 
 // ============================================================
@@ -564,7 +564,7 @@ if (isConfigured) {
     render();
   });
 
-  // Firestore リアルタイム同期
+  // Firestore リアルタイム
   unsubscribeGames = db.collection('games')
     .orderBy('added', 'asc')
     .onSnapshot(snapshot => {
@@ -778,7 +778,7 @@ function editGame(firestoreId) {
 
 async function deleteGame(firestoreId, name) {
   if (!isOwner()) return;
-  if (confirm(`「${name}」を削除しますか？`)) {
+  if (confirm(`「${name}」を削除しますお？`)) {
     try {
       await db.collection('games').doc(firestoreId).delete();
     } catch (err) {
@@ -880,7 +880,7 @@ async function processImage(dataUrl) {
   preview.style.display = 'block';
   document.getElementById('capture-area').style.display = 'none';
   document.getElementById('progress-wrap').style.display = 'block';
-  setOcrStatus('テキストを読み取り中...', '');
+  setOcrStatus,�テキストを読み取り中...', '');
   setProgress(5);
 
   let text = '';
@@ -908,9 +908,16 @@ function setProgress(pct) { document.getElementById('progress-fill').style.width
 async function runOCR(dataUrl) {
   if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js');
   return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('timeout')), 60000);
-    Tesseract.recognize(dataUrl, 'eng+jpn', {
-      logger: m => { if (m.status === 'recognizing text') setProgress(5 + m.progress * 90); }
+    const t = setTimeout(() => reject(new Error('timeout')), 90000);
+    Tesseract.recognize(dataUrl, 'jpn+eng', {
+      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/worker.min.js',
+      langPath:   'https://tessdata.projectnaptha.com/4.0.0',
+      corePath:   'https://cdn.jsdelivr.net/npm/tesseract.js-core@4/tesseract-core-simd.wasm.js',
+      logger: m => {
+        if (m.status === 'recognizing text') setProgress(30 + m.progress * 65);
+        else if (m.status === 'loading language traineddata') setProgress(5 + m.progress * 20);
+        else if (m.status === 'initializing tesseract') setProgress(3);
+      }
     }).then(({ data: { text } }) => { clearTimeout(t); resolve(text); })
       .catch(err => { clearTimeout(t); reject(err); });
   });
@@ -948,7 +955,7 @@ async function searchBGG(mode) {
   header.textContent = '';
 
   try {
-    const res  = await fetch(`https://api.geekdo.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`);
+    const res  = await bgFetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const items = parseBGGSearch(await res.text());
 
@@ -956,7 +963,7 @@ async function searchBGG(mode) {
       list.innerHTML = `<div class="no-results">「${esc(query)}」に一致するゲームが見つかりませんでした。</div>`;
       return;
     }
-    header.textContent = `${items.length}件見つかりました`;
+    header.textContent = `${items.length}綖見つかりました`;
     list.innerHTML = items.slice(0, 30).map(item => `
       <div class="bgg-item" onclick="selectBGGGame('${item.id}', this)">
         <img class="bgg-item-thumb" src="" alt="" onerror="this.style.display='none'">
@@ -996,9 +1003,25 @@ async function selectBGGGame(id, el) {
   }
 }
 
+// BGG API fetch with CORS proxy fallback
+async function bgFetch(url) {
+  const candidates = [
+    url,
+    `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  ];
+  for (const u of candidates) {
+    try {
+      const res = await fetch(u);
+      if (res.ok) return res;
+    } catch {}
+  }
+  throw new Error('BGG接続失敗');
+}
+
 async function fetchBGGDetails(id, retries = 4) {
   for (let i = 0; i < retries; i++) {
-    const res = await fetch(`https://api.geekdo.com/xmlapi2/thing?id=${id}&stats=1`);
+    const res = await bgFetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}&stats=1`);
     if (res.status === 202) { await delay(2000); continue; }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const xml  = new DOMParser().parseFromString(await res.text(), 'text/xml');
