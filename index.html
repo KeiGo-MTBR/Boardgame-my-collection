@@ -538,6 +538,11 @@ const firebaseConfig = {
 const OWNER_EMAIL = 'mkeigo.0415@gmail.com';
 
 // ============================================================
+// BGG API TOKEN — https://boardgamegeek.com/applications で登録・取得
+// ============================================================
+const BGG_API_TOKEN = ''; // ← BGGで承認後にBearerトークンをここに貼り付け
+
+// ============================================================
 // FIREBASE 初期化
 // ============================================================
 const isConfigured = firebaseConfig.apiKey !== 'YOUR_API_KEY';
@@ -1005,8 +1010,17 @@ async function selectBGGGame(id, el) {
 
 // BGG API fetch with CORS proxy fallback
 async function bgFetch(url) {
+  // BGG Bearerトークン認証必須（2025幆10月から）
+  // https://boardgamegeek.com/applications で登録しBGG_API_TOKENに入力してください
+  if (BGG_API_TOKEN) {
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${BGG_API_TOKEN}` }
+    });
+    if (res.ok) return res;
+    if (res.status === 401) throw new Error('BGG APIトークンが無効です');
+    throw new Error('HTTP ' + res.status);
+  }
   const candidates = [
-    url,
     `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
   ];
@@ -1016,7 +1030,7 @@ async function bgFetch(url) {
       if (res.ok) return res;
     } catch {}
   }
-  throw new Error('BGG接続失敗');
+  throw new Error('BGG APIトークン未設定: https://boardgamegeek.com/applications で登録してください');
 }
 
 async function fetchBGGDetails(id, retries = 4) {
