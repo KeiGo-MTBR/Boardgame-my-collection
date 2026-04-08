@@ -1152,6 +1152,1160 @@ updateAuthUI();
 render();
 </script>
 </body>
+</html><!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ボードゲームコレクション</title>
+
+<!-- Firebase SDK (compat v9) -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+    background: #f0f9ff;
+    color: #1e293b;
+    min-height: 100vh;
+  }
+
+  /* ===== SETUP BANNER ===== */
+  #setup-banner {
+    background: linear-gradient(135deg, #0284c7, #0ea5e9);
+    padding: 16px 32px;
+    display: none;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  #setup-banner.show { display: flex; }
+  #setup-banner .icon { font-size: 1.5rem; flex-shrink: 0; padding-top: 2px; }
+  #setup-banner .text { font-size: 0.9rem; line-height: 1.6; }
+  #setup-banner strong { color: #f0f9ff; }
+  #setup-banner code {
+    background: rgba(14,165,233,0.1); padding: 2px 7px; border-radius: 4px;
+    font-family: monospace; font-size: 0.85rem; color: #f0f9ff;
+  }
+
+  /* ===== HEADER ===== */
+  header {
+    background: linear-gradient(135deg, #0284c7, #38bdf8);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 4px 20px rgba(14,165,233,0.15);
+    flex-wrap: wrap;
+  }
+  header .logo { font-size: 2rem; }
+  header h1 { font-size: 1.5rem; font-weight: 700; color: #0284c7; letter-spacing: 1px; }
+  header .count { background: #0ea5e9; color: #1e293b; padding: 5px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  .mode-badge {
+    font-size: 0.78rem; padding: 4px 12px; border-radius: 20px; font-weight: 600;
+  }
+  .mode-badge.owner { background: rgba(14,165,233,0.15); color: #0284c7; border: 1px solid rgba(14,165,233,0.4); }
+  .mode-badge.viewer { background: rgba(2,132,199,0.08); color: #0284c7; border: 1px solid rgba(2,132,199,0.3); }
+
+  .btn-auth {
+    background: #f0f9ff; border: 1px solid #bae6fd; color: #0284c7;
+    padding: 8px 18px; border-radius: 10px; font-size: 0.88rem; font-weight: 600;
+    cursor: pointer; transition: background 0.15s; white-space: nowrap;
+  }
+  .btn-auth:hover { background: #e0f2fe; }
+  .btn-auth.logout { color: #0284c7; border-color: rgba(233,69,96,0.3); }
+
+  /* ===== CONTAINER ===== */
+  .container { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
+
+  /* ===== TOOLBAR ===== */
+  .toolbar {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    box-shadow: 0 4px 16px rgba(14,165,233,0.1);
+  }
+  .toolbar-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 140px; }
+  .toolbar-group label { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+  .toolbar input, .toolbar select {
+    background: #f0f9ff; border: 1px solid #bae6fd; color: #1e293b;
+    padding: 9px 12px; border-radius: 10px; font-size: 0.92rem;
+    outline: none; transition: border-color 0.2s; width: 100%;
+  }
+  .toolbar input:focus, .toolbar select:focus { border-color: #0ea5e9; }
+  .toolbar input::placeholder { color: #555; }
+
+  .toolbar-btns { display: flex; gap: 8px; align-self: flex-end; flex-wrap: wrap; }
+  .btn-add {
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #1e293b; border: none; padding: 10px 20px; border-radius: 10px;
+    font-size: 0.92rem; font-weight: 600; cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s; white-space: nowrap;
+  }
+  .btn-add:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(14,165,233,0.4); }
+  .btn-add:active { transform: translateY(0); }
+
+  /* ===== GAME GRID ===== */
+  .empty-state { text-align: center; padding: 80px 20px; color: #555; }
+  .empty-state .icon { font-size: 4rem; margin-bottom: 16px; }
+  .empty-state p { font-size: 1.1rem; }
+
+  .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+
+  .game-card-image {
+  width: 100%;
+  height: 150px;
+  overflow: hidden;
+  border-radius: 8px 8px 0 0;
+  margin: -18px -18px 12px -18px;
+  background: #e0f2fe;
+}
+.game-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+.img-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.img-preview {
+  max-width: 100px;
+  max-height: 100px;
+  border-radius: 6px;
+  object-fit: contain;
+  border: 1px solid #bae6fd;
+  background: #e0f2fe;
+}
+.game-card {
+    background: #ffffff; border-radius: 16px; padding: 20px;
+    box-shadow: 0 4px 16px rgba(14,165,233,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid #bae6fd;
+  }
+  .game-card:hover { transform: translateY(-4px); box-shadow: 0 8px 28px rgba(14,165,233,0.15); }
+
+  .game-card .genre-badge {
+    display: inline-block; background: rgba(14,165,233,0.1); color: #0284c7;
+    border: 1px solid rgba(14,165,233,0.3); padding: 3px 10px;
+    border-radius: 20px; font-size: 0.75rem; font-weight: 600; margin-bottom: 10px;
+  }
+  .game-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 10px; color: #1e293b; line-height: 1.3; }
+  .game-card .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .meta-item { display: flex; align-items: center; gap: 5px; font-size: 0.83rem; color: #64748b; }
+  .game-card .note { font-size: 0.83rem; color: #64748b; line-height: 1.5; border-top: 1px solid #bae6fd; padding-top: 10px; }
+
+  .card-links { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .btn-bgg-link, .btn-review-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px; border-radius: 8px;
+    font-size: 0.8rem; font-weight: 600; text-decoration: none;
+    transition: background 0.15s; width: 100%; justify-content: center;
+  }
+  .btn-bgg-link {
+    background: rgba(2,132,199,0.1); border: 1px solid rgba(106,176,245,0.25); color: #0284c7;
+  }
+  .btn-bgg-link:hover { background: rgba(106,176,245,0.2); }
+  .btn-review-link {
+    background: rgba(100,220,150,0.1); border: 1px solid rgba(100,220,150,0.25); color: #5dcea0;
+  }
+  .btn-review-link:hover { background: rgba(100,220,150,0.2); }
+
+  /* フォーム内のURL表示欄 */
+  .url-display {
+    background: #0a2240; border: 1px solid #bae6fd; color: #0284c7;
+    padding: 9px 13px; border-radius: 10px; font-size: 0.82rem;
+    word-break: break-all; min-height: 40px; display: flex; align-items: center;
+  }
+  .url-display.empty { color: #444; font-style: italic; }
+
+  .card-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-edit, .btn-delete {
+    flex: 1; padding: 8px; border-radius: 8px; border: none;
+    font-size: 0.83rem; cursor: pointer; font-weight: 600; transition: opacity 0.15s;
+  }
+  .btn-edit { background: #f0f9ff; color: #0284c7; }
+  .btn-delete { background: rgba(14,165,233,0.1); color: #0284c7; }
+  .btn-edit:hover, .btn-delete:hover { opacity: 0.8; }
+
+  /* ===== MODAL BASE ===== */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 100;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #ffffff; border-radius: 20px; padding: 30px;
+    width: 100%; max-width: 520px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6); border: 1px solid #bae6fd;
+  }
+  .modal h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 22px; color: #1e293b; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-size: 0.78rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; }
+  .form-group input, .form-group select, .form-group textarea {
+    background: #f0f9ff; border: 1px solid #bae6fd; color: #1e293b;
+    padding: 10px 13px; border-radius: 10px; font-size: 0.92rem;
+    outline: none; transition: border-color 0.2s; font-family: inherit;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #0ea5e9; }
+  .form-group textarea { resize: vertical; min-height: 75px; }
+  select option { background: #f0f9ff; }
+
+  .modal-actions { display: flex; gap: 12px; margin-top: 22px; }
+  .btn-cancel {
+    flex: 1; padding: 11px; background: #e0f2fe; color: #64748b;
+    border: none; border-radius: 10px; font-size: 0.95rem; cursor: pointer; font-weight: 600;
+  }
+  .btn-cancel:hover { background: #bae6fd; }
+  .btn-save {
+    flex: 2; padding: 11px;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #1e293b; border: none; border-radius: 10px; font-size: 0.95rem; cursor: pointer; font-weight: 700;
+  }
+  .btn-save:hover { opacity: 0.9; }
+
+  .scan-link-row { display: flex; justify-content: center; margin-bottom: 18px; }
+  .btn-scan-link {
+    background: #f0f9ff; border: 1px solid #bae6fd; color: #0284c7;
+    padding: 10px 20px; border-radius: 10px; font-size: 0.88rem; font-weight: 600;
+    cursor: pointer; transition: background 0.15s; display: flex; align-items: center; gap: 8px;
+    width: 100%; justify-content: center;
+  }
+  .btn-scan-link:hover { background: #e0f2fe; }
+  .or-divider {
+    display: flex; align-items: center; gap: 10px;
+    margin: 12px 0; color: #444; font-size: 0.78rem;
+  }
+  .or-divider::before, .or-divider::after { content: ''; flex: 1; height: 1px; background: #e0f2fe; }
+
+  /* ===== SCAN MODAL ===== */
+  .scan-modal-box {
+    background: #ffffff; border-radius: 20px; padding: 26px;
+    width: 100%; max-width: 580px; max-height: 88vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6); border: 1px solid #bae6fd;
+  }
+  .scan-modal-box::-webkit-scrollbar { width: 4px; }
+  .scan-modal-box::-webkit-scrollbar-track { background: #f0f9ff; border-radius: 4px; }
+  .scan-modal-box::-webkit-scrollbar-thumb { background: #bae6fd; border-radius: 4px; }
+
+  .scan-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  .scan-header h2 { font-size: 1.15rem; font-weight: 700; color: #1e293b; }
+  .btn-close-scan { background: none; border: none; color: #64748b; font-size: 1.5rem; cursor: pointer; line-height: 1; }
+  .btn-close-scan:hover { color: #1e293b; }
+
+  .scan-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .scan-tab {
+    flex: 1; padding: 9px; border-radius: 10px; border: none;
+    cursor: pointer; font-size: 0.88rem; font-weight: 600;
+    background: #f0f9ff; color: #64748b; transition: all 0.2s;
+  }
+  .scan-tab.active { background: #0ea5e9; color: #1e293b; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .capture-area {
+    border: 2px dashed #bae6fd; border-radius: 14px; padding: 26px 20px;
+    text-align: center; margin-bottom: 12px; transition: border-color 0.2s;
+  }
+  .capture-area:hover { border-color: #0ea5e9; }
+  .capture-label { font-size: 0.83rem; color: #666; margin-bottom: 14px; }
+  .capture-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn-capture {
+    background: #f0f9ff; border: 1px solid #bae6fd; color: #0284c7;
+    padding: 9px 18px; border-radius: 10px; cursor: pointer; font-size: 0.88rem; font-weight: 600;
+  }
+  .btn-capture:hover { background: #e0f2fe; }
+  .btn-capture-file { position: relative; }
+  .btn-capture-file input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  #camera-video { width: 100%; border-radius: 12px; margin-top: 12px; display: none; background: #000; }
+  #shoot-btn {
+    display: none; width: 100%; margin-top: 8px;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #1e293b; border: none; padding: 11px; border-radius: 10px;
+    font-size: 0.95rem; font-weight: 700; cursor: pointer;
+  }
+  #camera-canvas { display: none; }
+
+  .scan-preview-img {
+    width: 100%; max-height: 170px; object-fit: contain; border-radius: 12px;
+    background: #f0f9ff; margin-bottom: 10px; display: none;
+  }
+  .ocr-status { text-align: center; font-size: 0.86rem; color: #64748b; margin: 6px 0; min-height: 1.3em; }
+  .ocr-status.error { color: #0284c7; }
+  .ocr-status.ok { color: #4caf50; }
+  .progress-wrap { background: #f0f9ff; border-radius: 4px; height: 5px; margin: 7px 0; overflow: hidden; }
+  .progress-fill { height: 100%; background: #0ea5e9; border-radius: 4px; width: 0%; transition: width 0.3s; }
+
+  .bgg-search-row { display: flex; gap: 9px; margin-top: 10px; margin-bottom: 12px; }
+  .bgg-search-row input {
+    flex: 1; background: #f0f9ff; border: 1px solid #bae6fd; color: #1e293b;
+    padding: 9px 13px; border-radius: 10px; font-size: 0.92rem; outline: none;
+    transition: border-color 0.2s;
+  }
+  .bgg-search-row input:focus { border-color: #0ea5e9; }
+  .bgg-search-row input::placeholder { color: #555; }
+  .btn-bgg-search {
+    background: #0ea5e9; color: #1e293b; border: none; padding: 9px 16px;
+    border-radius: 10px; cursor: pointer; font-size: 0.88rem; font-weight: 700;
+    white-space: nowrap; transition: opacity 0.15s;
+  }
+  .btn-bgg-search:hover { opacity: 0.85; }
+
+  .results-header { font-size: 0.78rem; color: #666; margin-bottom: 8px; }
+  .results-list { max-height: 290px; overflow-y: auto; padding-right: 4px; }
+  .results-list::-webkit-scrollbar { width: 4px; }
+  .results-list::-webkit-scrollbar-track { background: #f0f9ff; border-radius: 4px; }
+  .results-list::-webkit-scrollbar-thumb { background: #bae6fd; border-radius: 4px; }
+
+  .bgg-item {
+    display: flex; align-items: center; gap: 11px; padding: 11px 13px;
+    border-radius: 12px; cursor: pointer; border: 1px solid #bae6fd;
+    margin-bottom: 7px; transition: border-color 0.15s, background 0.15s;
+  }
+  .bgg-item:hover { background: #e0f2fe; border-color: #0ea5e9; }
+  .bgg-item-thumb { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: #f0f9ff; flex-shrink: 0; }
+  .bgg-item-info { flex: 1; min-width: 0; }
+  .bgg-item-name { font-weight: 700; color: #1e293b; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bgg-item-sub { font-size: 0.78rem; color: #64748b; margin-top: 3px; }
+  .bgg-item-arrow { color: #0284c7; font-size: 1.2rem; flex-shrink: 0; }
+
+  .loading-spinner { text-align: center; padding: 22px; color: #64748b; font-size: 0.88rem; }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid #bae6fd; border-top-color: #0284c7; border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 7px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .no-results { text-align: center; color: #666; padding: 22px; font-size: 0.88rem; }
+
+  @media (max-width: 600px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .form-grid .full { grid-column: 1; }
+    header h1 { font-size: 1.15rem; }
+    .scan-modal-box { padding: 18px 14px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== SETUP BANNER ===== -->
+<div id="setup-banner">
+  <span class="icon">⚠️</span>
+  <div class="text">
+    <strong>Firebase の設定が必要です。</strong><br>
+    このHTMLファイルをテキストエディタで開き、先頭付近の <code>firebaseConfig</code> の値を
+    Firebaseコンソールで取得した内容に書き換えてください。<br>
+    ※ 書き換えるまではデータが保存されません。
+  </div>
+</div>
+
+<header>
+  <span class="logo">🎲</span>
+  <h1>ボードゲームコレクション</h1>
+  <span class="count" id="count-badge">0 ゲーム</span>
+  <div class="header-right">
+    <span class="mode-badge viewer" id="mode-badge" style="display:none;"></span>
+    <button class="btn-auth" id="auth-btn" onclick="loginWithGoogle()">🔑 ログイン</button>
+  </div>
+</header>
+
+<div class="container">
+  <div class="toolbar">
+    <div class="toolbar-group" style="flex:2; min-width:180px;">
+      <label>🔍 ゲームを検索</label>
+      <input type="text" id="search" placeholder="ゲーム名で検索...">
+    </div>
+    <div class="toolbar-group">
+      <label>👥 プレイ人数</label>
+      <select id="filter-players">
+        <option value="">すべて</option>
+        <option value="1">1人</option>
+        <option value="2">2人</option>
+        <option value="3">3人</option>
+        <option value="4">4人</option>
+        <option value="5">5人以上</option>
+      </select>
+    </div>
+    <div class="toolbar-group">
+      <label>⏱ プレイ時間</label>
+      <select id="filter-time">
+        <option value="">すべて</option>
+        <option value="30">〜30分</option>
+        <option value="60">〜60分</option>
+        <option value="120">〜2時間</option>
+        <option value="999">2時間以上</option>
+      </select>
+    </div>
+    <div class="toolbar-group">
+      <label>🏷 ジャンル</label>
+      <select id="filter-genre">
+        <option value="">すべて</option>
+        <option value="ストラテジー">ストラテジー</option>
+        <option value="協力">協力</option>
+        <option value="パーティー">パーティー</option>
+        <option value="カード">カード</option>
+        <option value="デッキ構築">デッキ構築</option>
+        <option value="ダイス">ダイス</option>
+        <option value="ワーカープレイスメント">ワーカープレイスメント</option>
+        <option value="その他">その他</option>
+      </select>
+    </div>
+    <div class="toolbar-group">
+      <label>↕ 並び替え</label>
+      <select id="sort-by">
+        <option value="added">追加順</option>
+        <option value="name">名前順</option>
+        <option value="players">人数順</option>
+        <option value="time">時間順</option>
+      </select>
+    </div>
+    <div class="toolbar-btns" id="owner-toolbar" style="display:none;">
+      <button class="btn-add" onclick="openModal()">＋ 手動で追加</button>
+    </div>
+  </div>
+
+  <div id="empty-state" class="empty-state" style="display:none;">
+    <div class="icon">🎲</div>
+    <p id="empty-msg">ゲームがまだ登録されていません。<br>ログインして「＋ 手動で追加」または「箱から読み取り」で登録しましょう！</p>
+  </div>
+  <div id="game-grid" class="game-grid"></div>
+</div>
+
+
+<!-- ===== Edit/Add Modal ===== -->
+<div class="modal-overlay" id="modal-overlay" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <h2 id="modal-title">🎲 ゲームを追加</h2>
+    <div id="scan-link-row" class="scan-link-row">
+      <button class="btn-scan-link" onclick="closeModal(); openScanModal()">
+        📷 箱を写真で読み取り・BGG検索で自動入力
+      </button>
+    </div>
+    <div class="or-divider">または手動で入力</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>ゲーム名 *</label>
+        <input type="text" id="f-name" placeholder="例：カタン">
+      </div>
+      <div class="form-group">
+        <label>最小人数 *</label>
+        <input type="number" id="f-min-players" placeholder="例：2" min="1" max="20">
+      </div>
+      <div class="form-group">
+        <label>最大人数 *</label>
+        <input type="number" id="f-max-players" placeholder="例：4" min="1" max="20">
+      </div>
+      <div class="form-group">
+        <label>プレイ時間（分）</label>
+        <input type="number" id="f-time" placeholder="例：60" min="1">
+      </div>
+      <div class="form-group">
+        <label>ジャンル</label>
+        <select id="f-genre">
+          <option value="ストラテジー">ストラテジー</option>
+          <option value="協力">協力</option>
+          <option value="パーティー">パーティー</option>
+          <option value="カード">カード</option>
+          <option value="デッキ構築">デッキ構築</option>
+          <option value="ダイス">ダイス</option>
+          <option value="ワーカープレイスメント">ワーカープレイスメント</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>メモ・コメント</label>
+        <textarea id="f-note" placeholder="お気に入りのポイントや感想など..."></textarea>
+      </div>
+      <div class="form-group full">
+        <label>🌐 BGG URL（自動入力）</label>
+        <div class="url-display empty" id="f-bgg-url-display">BGG検索で登録すると自動で入力されます</div>
+      </div>
+      <div class="form-group full">
+        <label>📝 SNS紹介URL（手動入力）</label>
+        <input type="url" id="f-review-url" placeholder="https://...  ブログやSNSの紹介記事URLを入力">
+      </div>
+    </div>
+      <div class="form-group full" id="image-preview-row" style="display:none">
+        <label>🖼 カバー画像（BGG自動取得）</label>
+        <div class="img-preview-wrap">
+          <img id="f-image-preview" class="img-preview" src="" alt="ゲームカバー">
+        </div>
+      </div>
+    <input type="hidden" id="f-bgg-id">
+    <input type="hidden" id="f-image-url">
+    <input type="hidden" id="f-firestore-id">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
+      <button class="btn-save" onclick="saveGame()">💾 保存する</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===== Scan Modal ===== -->
+<div class="modal-overlay" id="scan-overlay" onclick="handleScanOverlayClick(event)">
+  <div class="scan-modal-box">
+    <div class="scan-header">
+      <h2>📷 ゲームを読み取り登録</h2>
+      <button class="btn-close-scan" onclick="closeScanModal()">×</button>
+    </div>
+    <div class="scan-tabs">
+      <button class="scan-tab active" id="tab-photo-btn" onclick="switchScanTab('photo')">📷 写真かり読み取り</button>
+      <button class="scan-tab" id="tab-search-btn" onclick="switchScanTab('search')">🔍 名前で検索</button>
+    </div>
+
+    <div class="tab-content active" id="tab-photo">
+      <div class="capture-area" id="capture-area">
+        <p class="capture-label">ゲームの箱やコンポーネントを撮影するか<br>画像ファイルを選択してください</p>
+        <div class="capture-btns">
+          <button class="btn-capture" onclick="startCamera()">📷 カメラで撮影</button>
+          <button class="btn-capture btn-capture-file">
+            🖼 画像を選択
+            <input type="file" id="image-file-input" accept="image/*" onchange="handleImageFile(this)">
+          </button>
+        </div>
+        <video id="camera-video" autoplay playsinline></video>
+        <canvas id="camera-canvas"></canvas>
+        <button id="shoot-btn" onclick="captureFrame()">📸 撮影する</button>
+      </div>
+      <img id="scan-preview" class="scan-preview-img" alt="preview">
+      <div class="progress-wrap" id="progress-wrap" style="display:none;">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="ocr-status" id="ocr-status"></div>
+      <div id="photo-search-row" style="display:none;">
+        <div class="bgg-search-row">
+          <input type="text" id="photo-detected-name" placeholder="検出されたゲーム名 (編集可)">
+          <button class="btn-bgg-search" onclick="searchBGG('photo')">検索</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-search">
+      <div class="bgg-search-row" style="margin-top:0;">
+        <input type="text" id="search-name-input" placeholder="ゲーム名を入力 (日本語・英語)" onkeydown="if(event.key==='Enter') searchBGG('search')">
+        <button class="btn-bgg-search" onclick="searchBGG('search')">検索</button>
+      </div>
+    </div>
+
+    <div id="bgg-results-area" style="display:none;">
+      <div class="results-header" id="bgg-results-header"></div>
+      <div class="results-list" id="bgg-results-list"></div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ============================================================
+// FIREBASE CONFIG — ここをFirebaseコンソールの値に書き換えてください
+// ============================================================
+const firebaseConfig = {
+  apiKey:            "AIzaSyDHH-k__Heurok34WsPFngGuPhqMCMpkWY",
+  authDomain:        "boardgame-my-collection.firebaseapp.com",
+  projectId:         "boardgame-my-collection",
+  storageBucket:     "boardgame-my-collection.firebasestorage.app",
+  messagingSenderId: "1008443683437",
+  appId:             "1:1008443683437:web:6e571290f794dcd0ff8564"
+};
+
+// オーナーはGoogleアカウントメールアドレス
+const OWNER_EMAIL = 'mkeigo.0415@gmail.com';
+
+// ============================================================
+// BGG API TOKEN — https://boardgamegeek.com/applications で登録・取得
+// ============================================================
+const BGG_API_TOKEN = '978f3c53-9c20-4b24-9945-30fecb0759c7'; // ← BGGで承認後にBearerトークンをここに貼り付け
+
+// ============================================================
+// FIREBASE 初期化
+// ============================================================
+const isConfigured = firebaseConfig.apiKey !== 'YOUR_API_KEY';
+
+if (!isConfigured) {
+  document.getElementById('setup-banner').classList.add('show');
+}
+
+let db, auth;
+let games = [];
+let currentUser = null;
+let cameraStream = null;
+let unsubscribeGames = null;
+
+if (isConfigured) {
+  firebase.initializeApp(firebaseConfig);
+  db   = firebase.firestore();
+  auth = firebase.auth();
+
+  // 認証状態の監視
+  auth.onAuthStateChanged(user => {
+    currentUser = user;
+    updateAuthUI();
+    render();
+  });
+
+  // Firestore リアルタイム
+  unsubscribeGames = db.collection('games')
+    .orderBy('added', 'asc')
+    .onSnapshot(snapshot => {
+      games = snapshot.docs.map(doc => ({ ...doc.data(), firestoreId: doc.id }));
+      render();
+    }, err => {
+      console.error('Firestore error:', err);
+    });
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+const isOwner = () => currentUser && currentUser.email === OWNER_EMAIL;
+
+function updateAuthUI() {
+  const btn    = document.getElementById('auth-btn');
+  const badge  = document.getElementById('mode-badge');
+  const ownerBar = document.getElementById('owner-toolbar');
+
+  if (isOwner()) {
+    btn.textContent = 'ログアウト';
+    btn.className   = 'btn-auth logout';
+    btn.onclick     = logout;
+    badge.textContent = '✏️ 編集モード';
+    badge.className   = 'mode-badge owner';
+    badge.style.display = 'inline-block';
+    ownerBar.style.display = 'flex';
+  } else {
+    btn.textContent = '🔑 ログイン';
+    btn.className   = 'btn-auth';
+    btn.onclick     = loginWithGoogle;
+    if (currentUser) {
+      badge.textContent = '👁 閲覧モード';
+      badge.className   = 'mode-badge viewer';
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+    ownerBar.style.display = 'none';
+  }
+}
+
+function loginWithGoogle() {
+  if (!isConfigured) { alert('先にFirebaseの設定を完了してください。'); return; }
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(err => alert('ログインに失敗しました: ' + err.message));
+}
+
+function logout() {
+  auth.signOut();
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+['search','filter-players','filter-time','filter-genre','sort-by'].forEach(id =>
+  document.getElementById(id).addEventListener('change', render)
+);
+document.getElementById('search').addEventListener('input', render);
+
+function getFiltered() {
+  const q       = document.getElementById('search').value.toLowerCase();
+  const players = document.getElementById('filter-players').value;
+  const time    = document.getElementById('filter-time').value;
+  const genre   = document.getElementById('filter-genre').value;
+  const sortBy  = document.getElementById('sort-by').value;
+
+  let result = games.filter(g => {
+    if (q && !g.name.toLowerCase().includes(q)) return false;
+    if (players) {
+      const p = parseInt(players);
+      if (p === 5) { if (g.maxPlayers < 5) return false; }
+      else { if (g.minPlayers > p || g.maxPlayers < p) return false; }
+    }
+    if (time) {
+      const t = parseInt(time);
+      if (t === 999) { if (g.time < 121) return false; }
+      else { if (!g.time || g.time > t) return false; }
+    }
+    if (genre && g.genre !== genre) return false;
+    return true;
+  });
+
+  result.sort((a, b) => {
+    if (sortBy === 'name')    return a.name.localeCompare(b.name, 'ja');
+    if (sortBy === 'added')   return (a.added || 0) - (b.added || 0);
+    if (sortBy === 'players') return a.minPlayers - b.minPlayers;
+    if (sortBy === 'time')    return (a.time || 999) - (b.time || 999);
+    return 0;
+  });
+  return result;
+}
+
+function render() {
+  const filtered = getFiltered();
+  const grid     = document.getElementById('game-grid');
+  const empty    = document.getElementById('empty-state');
+
+  document.getElementById('count-badge').textContent = `${games.length} ゲーム`;
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const owner = isOwner();
+  grid.innerHTML = filtered.map(g => `
+    <div class="game-card">
+      ${g.imageUrl ? `<div class="game-card-image"><img src="${esc(g.imageUrl)}" alt="${esc(g.name)}" loading="lazy" onerror="this.parentElement.style.display='none'"></div>` : ''}
+      <div class="genre-badge">${g.genre || 'その他'}</div>
+      <h3>${esc(g.name)}</h3>
+      <div class="meta">
+        <div class="meta-item">👥 ${g.minPlayers}〜${g.maxPlayers}人</div>
+        ${g.time ? `<div class="meta-item">⏱ ${g.time}分</div>` : ''}
+      </div>
+      ${g.note ? `<div class="note">${esc(g.note)}</div>` : ''}
+      ${(g.bggId || g.reviewUrl) ? `<div class="card-links">
+        ${g.bggId ? `<a class="btn-bgg-link" href="https://boardgamegeek.com/boardgame/${g.bggId}" target="_blank" rel="noopener">🌐 BoardGameGeekで見る</a>` : ''}
+        ${g.reviewUrl ? `<a class="btn-review-link" href="${esc(g.reviewUrl)}" target="_blank" rel="noopener">📝 SNS紹介記事を見る</a>` : ''}
+      </div>` : ''}
+      ${owner ? `
+      <div class="card-actions">
+        <button class="btn-edit" onclick="editGame('${g.firestoreId}')">✏️ 編集</button>
+        <button class="btn-delete" onclick="deleteGame('${g.firestoreId}', '${esc(g.name)}')">🗑 削除</button>
+      </div>` : ''}
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ============================================================
+// ADD / EDIT MODAL
+// ============================================================
+function openModal(game = null) {
+  document.getElementById('modal-title').textContent = game ? '✏️ ゲームを編集' : '🎲 ゲームを追加';
+  document.getElementById('scan-link-row').style.display = game ? 'none' : 'flex';
+  document.getElementById('f-name').value          = game ? game.name : '';
+  document.getElementById('f-min-players').value   = game ? game.minPlayers : '';
+  document.getElementById('f-max-players').value   = game ? game.maxPlayers : '';
+  document.getElementById('f-time').value          = game ? (game.time || '') : '';
+  document.getElementById('f-genre').value         = game ? game.genre : 'ストラテジー';
+  document.getElementById('f-note').value          = game ? (game.note || '') : '';
+  document.getElementById('f-bgg-id').value        = game ? (game.bggId || '') : '';
+  document.getElementById('f-firestore-id').value  = game ? (game.firestoreId || '') : '';
+  document.getElementById('f-review-url').value    = game ? (game.reviewUrl || '') : '';
+  // 画像プレビュー
+  const imageUrl = game ? (game.imageUrl || '') : '';
+  document.getElementById('f-image-url').value = imageUrl;
+  const prevRow = document.getElementById('image-preview-row');
+  if (imageUrl) {
+    const img = document.getElementById('f-image-preview');
+    img.src = imageUrl.startsWith('//') ? 'https:' + imageUrl : imageUrl;
+    prevRow.style.display = 'block';
+  } else {
+    prevRow.style.display = 'none';
+  }
+  // BGG URL 表示
+  const bggId = game ? (game.bggId || '') : '';
+  const urlDisp = document.getElementById('f-bgg-url-display');
+  if (bggId) {
+    urlDisp.textContent = `https://boardgamegeek.com/boardgame/${bggId}`;
+    urlDisp.classList.remove('empty');
+  } else {
+    urlDisp.textContent = 'BGG検索で登録すると自動で入力されます';
+    urlDisp.classList.add('empty');
+  }
+  document.getElementById('modal-overlay').classList.add('active');
+  setTimeout(() => document.getElementById('f-name').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}
+
+async function saveGame() {
+  if (!isOwner()) { alert('ゲームの追加・編集はオーナーのみ可能です'); return; }
+  const name = document.getElementById('f-name').value.trim();
+  const minP = parseInt(document.getElementById('f-min-players').value);
+  const maxP = parseInt(document.getElementById('f-max-players').value);
+  if (!name) { alert('ゲーム名を入力してください'); return; }
+  if (!minP || !maxP) { alert('人数を入力してください'); return; }
+  if (minP > maxP) { alert('最小人数は最大人数以下にしてください'); return; }
+
+  const data = {
+    name,
+    minPlayers: minP,
+    maxPlayers: maxP,
+    time:  parseInt(document.getElementById('f-time').value) || null,
+    genre: document.getElementById('f-genre').value,
+    note:  document.getElementById('f-note').value.trim(),
+    bggId:     document.getElementById('f-bgg-id').value.trim() || null,
+    reviewUrl: document.getElementById('f-review-url').value.trim() || null,
+    imageUrl:  document.getElementById('f-image-url').value.trim() || null,
+  };
+
+  const fid = document.getElementById('f-firestore-id').value;
+  try {
+    if (fid) {
+      await db.collection('games').doc(fid).update(data);
+    } else {
+      data.added = Date.now();
+      await db.collection('games').add(data);
+    }
+    closeModal();
+  } catch (err) {
+    alert('保存に失敗しました: ' + err.message);
+  }
+}
+
+function editGame(firestoreId) {
+  const game = games.find(g => g.firestoreId === firestoreId);
+  if (game) openModal(game);
+}
+
+async function deleteGame(firestoreId, name) {
+  if (!isOwner()) return;
+  if (confirm(`「${name}」を削除しますお？`)) {
+    try {
+      await db.collection('games').doc(firestoreId).delete();
+    } catch (err) {
+      alert('削除に失敗しました: ' + err.message);
+    }
+  }
+}
+
+// ============================================================
+// SCAN MODAL
+// ============================================================
+function openScanModal() {
+  if (!isOwner()) return;
+  resetScanModal();
+  document.getElementById('scan-overlay').classList.add('active');
+}
+
+function closeScanModal() {
+  stopCamera();
+  document.getElementById('scan-overlay').classList.remove('active');
+}
+
+function handleScanOverlayClick(e) {
+  if (e.target === document.getElementById('scan-overlay')) closeScanModal();
+}
+
+function resetScanModal() {
+  document.getElementById('capture-area').style.display = 'block';
+  document.getElementById('scan-preview').style.display = 'none';
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('ocr-status').textContent = '';
+  document.getElementById('ocr-status').className = 'ocr-status';
+  document.getElementById('photo-search-row').style.display = 'none';
+  document.getElementById('photo-detected-name').value = '';
+  document.getElementById('camera-video').style.display = 'none';
+  document.getElementById('shoot-btn').style.display = 'none';
+  document.getElementById('image-file-input').value = '';
+  document.getElementById('search-name-input').value = '';
+  document.getElementById('bgg-results-area').style.display = 'none';
+  document.getElementById('bgg-results-list').innerHTML = '';
+}
+
+function switchScanTab(tab) {
+  document.getElementById('tab-photo').classList.toggle('active', tab === 'photo');
+  document.getElementById('tab-search').classList.toggle('active', tab === 'search');
+  document.getElementById('tab-photo-btn').classList.toggle('active', tab === 'photo');
+  document.getElementById('tab-search-btn').classList.toggle('active', tab === 'search');
+  document.getElementById('bgg-results-area').style.display = 'none';
+  if (tab !== 'photo') stopCamera();
+}
+
+// ============================================================
+// CAMERA
+// ============================================================
+async function startCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const video = document.getElementById('camera-video');
+    video.srcObject = cameraStream;
+    video.style.display = 'block';
+    document.getElementById('shoot-btn').style.display = 'block';
+  } catch (err) {
+    alert('カメラにアクセスできませんでした。画像ファイルから選択してください。');
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  const video = document.getElementById('camera-video');
+  video.srcObject = null;
+  video.style.display = 'none';
+  document.getElementById('shoot-btn').style.display = 'none';
+}
+
+function captureFrame() {
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  stopCamera();
+  processImage(canvas.toDataURL('image/jpeg', 0.9));
+}
+
+function handleImageFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => processImage(e.target.result);
+  reader.readAsDataURL(file);
+}
+
+// ============================================================
+// OCR
+// ============================================================
+async function processImage(dataUrl) {
+  const preview = document.getElementById('scan-preview');
+  preview.src   = dataUrl;
+  preview.style.display = 'block';
+  document.getElementById('capture-area').style.display = 'none';
+  document.getElementById('progress-wrap').style.display = 'block';
+  setOcrStatus('テキストを読み取り中...', '');
+  setProgress(5);
+
+  let text = '';
+  try {
+    text = await runOCR(dataUrl);
+    setProgress(100);
+    setOcrStatus(text.trim() ? '読み取り完了！ゲーム名を確認して検索してください' : 'テキストを読み取れませんでした。ゲーム名を手入力してください', text.trim() ? 'ok' : '');
+  } catch {
+    setOcrStatus('OCRが利用できません。ゲーム名を手入力してください', '');
+  }
+
+  document.getElementById('photo-detected-name').value = extractGameName(text);
+  document.getElementById('photo-search-row').style.display = 'block';
+  setTimeout(() => document.getElementById('photo-detected-name').focus(), 100);
+}
+
+function setOcrStatus(msg, cls) {
+  const el = document.getElementById('ocr-status');
+  el.textContent = msg;
+  el.className   = 'ocr-status' + (cls ? ' ' + cls : '');
+}
+
+function setProgress(pct) { document.getElementById('progress-fill').style.width = pct + '%'; }
+
+async function runOCR(dataUrl) {
+  if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js');
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), 90000);
+    Tesseract.recognize(dataUrl, 'jpn+eng', {
+      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/worker.min.js',
+      langPath:   'https://tessdata.projectnaptha.com/4.0.0',
+      corePath:   'https://cdn.jsdelivr.net/npm/tesseract.js-core@4/tesseract-core-simd.wasm.js',
+      logger: m => {
+        if (m.status === 'recognizing text') setProgress(30 + m.progress * 65);
+        else if (m.status === 'loading language traineddata') setProgress(5 + m.progress * 20);
+        else if (m.status === 'initializing tesseract') setProgress(3);
+      }
+    }).then(({ data: { text } }) => { clearTimeout(t); resolve(text); })
+      .catch(err => { clearTimeout(t); reject(err); });
+  });
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function extractGameName(ocrText) {
+  if (!ocrText) return '';
+  const lines = ocrText.split('\n').map(l => l.trim()).filter(l => l.length >= 2 && l.length <= 60);
+  const cands = lines.filter(l => /[A-Za-z\u3040-\u9fff]/.test(l));
+  return (cands[0] || lines[0] || '').trim();
+}
+
+// ============================================================
+// BGG SEARCH
+// ============================================================
+async function searchBGG(mode) {
+  const query = mode === 'photo'
+    ? document.getElementById('photo-detected-name').value.trim()
+    : document.getElementById('search-name-input').value.trim();
+  if (!query) { alert('ゲーム名を入力してください'); return; }
+
+  const area   = document.getElementById('bgg-results-area');
+  const list   = document.getElementById('bgg-results-list');
+  const header = document.getElementById('bgg-results-header');
+  area.style.display = 'block';
+  list.innerHTML = `<div class="loading-spinner"><span class="spinner"></span>BoardGameGeekで検索中...</div>`;
+  header.textContent = '';
+
+  try {
+    const res  = await bgFetch(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const items = parseBGGSearch(await res.text());
+
+    if (!items.length) {
+      list.innerHTML = `<div class="no-results">「${esc(query)}」に一致するゲームが見つかりませんでした。</div>`;
+      return;
+    }
+    header.textContent = `${items.length}綖見つかりました`;
+    list.innerHTML = items.slice(0, 30).map(item => `
+      <div class="bgg-item" onclick="selectBGGGame('${item.id}', this)">
+        <img class="bgg-item-thumb" src="" alt="" onerror="this.style.display='none'">
+        <div class="bgg-item-info">
+          <div class="bgg-item-name">${esc(item.name)}</div>
+          <div class="bgg-item-sub">${item.year ? item.year + '年' : '年不明'}</div>
+        </div>
+        <span class="bgg-item-arrow">›</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    list.innerHTML = `<div class="no-results">BGGへの接続に失敗しました。<br><small>${err.message}</small></div>`;
+  }
+}
+
+function parseBGGSearch(xmlText) {
+  const xml   = new DOMParser().parseFromString(xmlText, 'text/xml');
+  return Array.from(xml.querySelectorAll('item')).map(item => ({
+    id:   item.getAttribute('id'),
+    name: item.querySelector('name')?.getAttribute('value') || '不明',
+    year: item.querySelector('yearpublished')?.getAttribute('value') || '',
+  }));
+}
+
+async function selectBGGGame(id, el) {
+  document.querySelectorAll('.bgg-item').forEach(e => e.style.opacity = '0.5');
+  el.style.opacity = '1';
+  el.style.borderColor = '#e94560';
+  el.querySelector('.bgg-item-arrow').textContent = '⏳';
+  try {
+    const data = await fetchBGGDetails(id);
+    if (data) { closeScanModal(); openModal(data); }
+  } catch {
+    alert('ゲーム詳細の取得に失敗しました。手動で入力してください。');
+    document.querySelectorAll('.bgg-item').forEach(e => { e.style.opacity='1'; e.style.borderColor=''; });
+    el.querySelector('.bgg-item-arrow').textContent = '›';
+  }
+}
+
+// BGG API fetch with CORS proxy fallback
+async function bgFetch(url) {
+  // BGG Bearerトークン認証必須（2025幆10月から）
+  // https://boardgamegeek.com/applications で登録しBGG_API_TOKENに入力してください
+  if (BGG_API_TOKEN) {
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${BGG_API_TOKEN}` }
+    });
+    if (res.ok) return res;
+    if (res.status === 401) throw new Error('BGG APIトークンが無効です');
+    throw new Error('HTTP ' + res.status);
+  }
+  const candidates = [
+    `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  ];
+  for (const u of candidates) {
+    try {
+      const res = await fetch(u);
+      if (res.ok) return res;
+    } catch {}
+  }
+  throw new Error('BGG APIトークン未設定: https://boardgamegeek.com/applications で登録してください');
+}
+
+async function fetchBGGDetails(id, retries = 4) {
+  for (let i = 0; i < retries; i++) {
+    const res = await bgFetch(`https://boardgamegeek.com/xmlapi2/thing?id=${id}&stats=1`);
+    if (res.status === 202) { await delay(2000); continue; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const xml  = new DOMParser().parseFromString(await res.text(), 'text/xml');
+    const item = xml.querySelector('item');
+    if (!item) throw new Error('no item');
+    const cats  = Array.from(item.querySelectorAll('link[type="boardgamecategory"]')).map(l => l.getAttribute('value'));
+    const mechs = Array.from(item.querySelectorAll('link[type="boardgamemechanic"]')).map(l => l.getAttribute('value'));
+    return {
+      bggId:      id,
+      name:       (() => {
+        const jaRegex = /[\u3040-\u30ff\uff66-\uff9f]/; // ひらがな・カタカナ
+        const allNames = Array.from(item.querySelectorAll('name'));
+        const jaName = allNames.find(n => jaRegex.test(n.getAttribute('value') || ''));
+        return jaName ? jaName.getAttribute('value') : (item.querySelector('name[type="primary"]')?.getAttribute('value') || '不明');
+      })(),
+      minPlayers: parseInt(item.querySelector('minplayers')?.getAttribute('value')) || 2,
+      maxPlayers: parseInt(item.querySelector('maxplayers')?.getAttribute('value')) || 4,
+      time:       parseInt(item.querySelector('playingtime')?.getAttribute('value')) || null,
+      genre:      inferGenre([...cats, ...mechs]),
+      imageUrl:   item.querySelector('thumbnail')?.textContent?.trim() || item.querySelector('image')?.textContent?.trim() || '',
+    };
+  }
+  throw new Error('max retries');
+}
+
+function inferGenre(tags) {
+  const s = tags.join(' ').toLowerCase();
+  if (s.includes('cooperative') || s.includes('co-op')) return '協力';
+  if (s.includes('deck building')) return 'デッキ構築';
+  if (s.includes('worker placement'))  return 'ワーカープレイスメント';
+  if (s.includes('party'))   return 'パーティー';
+  if (s.includes('card') || s.includes('hand management')) return 'カード';
+  if (s.includes('dice'))    return 'ダイス';
+  return 'ストラテジー';
+}
+
+function fillFormFromBGG(data) {
+  document.getElementById('f-name').value        = data.name || '';
+  document.getElementById('f-min-players').value = data.minPlayers || '';
+  document.getElementById('f-max-players').value = data.maxPlayers || '';
+  document.getElementById('f-time').value        = data.time || '';
+  document.getElementById('f-genre').value       = data.genre || 'ストラテジー';
+  document.getElementById('f-note').value        = '';
+  document.getElementById('f-bgg-id').value      = data.bggId || '';
+  document.getElementById('f-firestore-id').value = '';
+  document.getElementById('f-review-url').value  = '';
+  // BGG URL 表示欄を更新
+  const urlDisp = document.getElementById('f-bgg-url-display');
+  if (data.bggId) {
+    urlDisp.textContent = `https://boardgamegeek.com/boardgame/${data.bggId}`;
+    urlDisp.classList.remove('empty');
+  } else {
+    urlDisp.textContent = 'BGG検索で登録すると自動で入力されます';
+    urlDisp.classList.add('empty');
+  }
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeScanModal(); }
+});
+
+// 初期表示
+updateAuthUI();
+render();
+</script>
+</body>
 </html>
 <!DOCTYPE html>
 <html lang="ja">
