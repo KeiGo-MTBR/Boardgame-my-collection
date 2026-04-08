@@ -1093,7 +1093,12 @@ async function fetchBGGDetails(id, retries = 4) {
     const mechs = Array.from(item.querySelectorAll('link[type="boardgamemechanic"]')).map(l => l.getAttribute('value'));
     return {
       bggId:      id,
-      name:       item.querySelector('name[type="primary"]')?.getAttribute('value') || '不明',
+      name:       (() => {
+        const jaRegex = /[\u3040-\u30ff\uff66-\uff9f]/; // ひらがな・カタカナ
+        const allNames = Array.from(item.querySelectorAll('name'));
+        const jaName = allNames.find(n => jaRegex.test(n.getAttribute('value') || ''));
+        return jaName ? jaName.getAttribute('value') : (item.querySelector('name[type="primary"]')?.getAttribute('value') || '不明');
+      })(),
       minPlayers: parseInt(item.querySelector('minplayers')?.getAttribute('value')) || 2,
       maxPlayers: parseInt(item.querySelector('maxplayers')?.getAttribute('value')) || 4,
       time:       parseInt(item.querySelector('playingtime')?.getAttribute('value')) || null,
