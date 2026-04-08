@@ -1000,7 +1000,7 @@ async function selectBGGGame(id, el) {
   el.querySelector('.bgg-item-arrow').textContent = '⏳';
   try {
     const data = await fetchBGGDetails(id);
-    if (data) { fillFormFromBGG(data); closeScanModal(); openModal(); }
+    if (data) { closeScanModal(); openModal(data); }
   } catch {
     alert('ゲーム詳細の取得に失敗しました。手動で入力してください。');
     document.querySelectorAll('.bgg-item').forEach(e => { e.style.opacity='1'; e.style.borderColor=''; });
